@@ -1,0 +1,133 @@
+<body>
+  <canvas id="c"></canvas>
+  <style>
+    body { margin: 0; overflow: hidden; background: #050505; cursor: none; }
+    canvas {display: block;}
+  </style>
+  <script>
+    const ctx = c.getContext("2d");
+    let mouse = { x: innerWidth / 2, y: innerHeight / 2};
+
+    let segments = [];
+    for (let i = 0; i < 8; i++) {
+      segments.push({ x: innerWidth / 2, y: innerHeight / 2});
+    }
+
+    let stars = [];
+    let score = 0;
+    const colors = ["#ff0055", "#00ffff", "#ff00ff", "#00ff66", "#ffff00"];
+
+    let audioCtx, osc, gainNode;
+    function initAudio() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        osc = audioCtx.createOscillator();
+        gainNode = audioCtx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(70, audioCtx.currentTime);
+        gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        osc.start();
+      }
+      if (audioCtx.state === "suspended") {
+        audioCtx.resume();
+      }
+    }
+
+    onmousemove = (e) => {
+      mouse.x = e.clientX;
+      mouse.y = e.clientY;
+    };
+
+    onclick = () => {
+      initAudio();
+    };
+
+    onresize = () => { c.width = innerWidth; c.height = innerHeight; };
+    onresize();
+
+    function frame(now) {
+      ctx.fillStyle = "rgba(5, 5, 5, 0.3)";
+      ctx.fillRect(0, 0, c.width, c.height);
+
+      let dx = mouse.x - segments[0].x;
+      let dy = mouse.y - segments[0].y;
+      segments[0].x += dx * 0.08;
+      segments[0].y += dy * 0.08;
+
+      let headSpeed = Math.hypot(dx * 0.08, dy * 0.08);
+
+      for (let i=1; i < segments.length; i++) {
+        let prev = segments[i - 1];
+        let curr = segments[i];
+        curr.x += (prev.x - curr.x) * 0.12;
+        curr.y += (prev.y - curr.y) * 0.12;
+      }
+
+      if (audioCtx && audioCtx.state === "running" && gainNode && osc) {
+        let targetFreq = 70 + headSpeed *6;
+        let targetGain = Math.min(0.04, headSpeed * 0.0015);
+        osc.frequency.setTargetAtTime(targetFreq, audioCtx.currentTime, 0.2);
+        gainNode.gain.setTargetAtTime(targetGain, audioCtx.currentTime, 0.2);
+      }
+
+      while (stars.length < 2) {
+        stars.push({
+          x: Math.random() * (c.width - 100) + 50,
+          y: Math.random() * (c.height - 100) + 50,
+          r: 10
+        });
+      }
+
+      for (let i = stars.length - 1; i >= 0; i--) {
+        let s = stars[i];
+        let dist = Math.hypot(segments[0].x - s.x, segments[0].y - s.y);
+        if (dist < 12 + s.r) {
+          score++;
+          stars.splice(i, 1);
+
+          if (audioCtx && audioCtx.state === "running") {
+            let beep = audioCtx.createOscillator();
+            let g = audioCtx.createGain();
+            beep.type = "sine";
+            beep.frequency.setValueAtTime(440 + (score % 8) * 60, audioCtx.currentTime);
+            beep.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.25);
+            g.gain.setValueAtTime(0.12, audioCtx.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+            beep.connect(g);
+            g.connect(audioCtx.destination);
+            beep.start();
+            beep.stop(audioCtx.currentTime + 0.3);
+          }
+        }
+      }
+
+      for (let s of stars) {
+        ctx.fillStyle = "#ffff00";
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = "#ffff00";
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+
+      for (let i = segments.length - 1; i >= 0; i--) {
+        let s = segments[i];
+        ctx.fillStyle = i === 0 ? "#ffffff" : colors[i % colors.length];
+        ctx.beginPath();
+        let radius = Math.max(2, 12 - i * 1.2);
+        ctx.arc(s.x, s.y, radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.fillStyle = "white";
+      ctx.font = "bold 20px monospace";
+      ctx.fillText("Score: " + score, 30, 40);
+
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  </script>
+</body>
